@@ -14,32 +14,26 @@ type Auth struct {
 }
 
 type User struct {
-	ID   uint64 `json:"id"`
-	Name string `json:"username"`
+	ID   uint64
+	Name string
 }
 
 type Claims struct {
 	jwt.StandardClaims
-	User User `json:"user"`
+	User User
 }
 
-func NewAuth() *Auth {
-	return &Auth{
+func NewAuth() Auth {
+	return Auth{
 		Key:    []byte("hello"),
 		Method: jwt.GetSigningMethod("HS256"),
 	}
 }
 
-func (a *Auth) GetSignedToken(user User, issuedAt time.Time, ttl time.Duration) (string, string, error) {
+func (a Auth) GetSignedToken(user User, issuedAt time.Time, ttl time.Duration) (string, string, error) {
 	id := uuid.New().String()
 	claims := Claims{
-		User: struct {
-			ID   uint64 `json:"id"`
-			Name string `json:"username"`
-		}{
-			ID:   user.ID,
-			Name: user.Name,
-		},
+		User: user,
 		StandardClaims: jwt.StandardClaims{
 			Id:        id,
 			IssuedAt:  issuedAt.Unix(),
@@ -55,7 +49,7 @@ func (a *Auth) GetSignedToken(user User, issuedAt time.Time, ttl time.Duration) 
 	return str, id, nil
 }
 
-func (a *Auth) ExtractClaims(tokenStr string) (Claims, error) {
+func (a Auth) ExtractClaims(tokenStr string) (Claims, error) {
 	claims := Claims{}
 	token, err := jwt.ParseWithClaims(tokenStr, &claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {

@@ -1,8 +1,24 @@
 CREATE TABLE IF NOT EXISTS tasks (
-      id serial PRIMARY KEY,
-      name VARCHAR(100) UNIQUE NOT NULL ,
-      description TEXT NOT NULL
+    id SERIAL PRIMARY KEY,
+    authorid BIGINT NOT NULL,
+    name VARCHAR(100) UNIQUE NOT NULL ,
+    description TEXT NOT NULL
   );
 
+CREATE TABLE IF NOT EXISTS users(
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL ,
+    password VARCHAR(50) NOT NULL,
+    isadmin BOOLEAN DEFAULT FALSE
+  );
+
+CREATE TABLE IF NOT EXISTS queue(
+    id BIGSERIAL PRIMARY KEY,
+    taskid INTEGER NOT NULL,
+    userid BIGINT NOT NULL,
+    status VARCHAR(20),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    solution TEXT NOT NULL
+);
 
 

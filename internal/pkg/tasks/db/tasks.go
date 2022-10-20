@@ -18,7 +18,7 @@ func NewTasker(db *sql.DB) *TasksRepo {
 	}
 }
 
-func (t *TasksRepo) CreateTask(ctx context.Context, task *tasksrepo.Task) error {
+func (t TasksRepo) CreateTask(ctx context.Context, task *tasksrepo.Task) error {
 	if _, err := t.tasks.ExecContext(ctx, "INSERT INTO tasks (name, description) VALUES($1, $2)", task.Name, task.Description); err != nil {
 		return err
 	}
@@ -26,7 +26,7 @@ func (t *TasksRepo) CreateTask(ctx context.Context, task *tasksrepo.Task) error 
 	return nil
 }
 
-func (t *TasksRepo) GetAllTasks(ctx context.Context) ([]*tasksrepo.Task, error) {
+func (t TasksRepo) GetAllTasks(ctx context.Context) ([]*tasksrepo.Task, error) {
 	curr, err := t.tasks.QueryContext(ctx, "SELECT id, name, description FROM tasks")
 	if err != nil {
 		return nil, err
@@ -43,15 +43,55 @@ func (t *TasksRepo) GetAllTasks(ctx context.Context) ([]*tasksrepo.Task, error) 
 	return res, nil
 }
 
-func (t *TasksRepo) GetTaskByID(ctx context.Context, id uint32) (*tasksrepo.Task, error) {
+func (t TasksRepo) GetTaskByID(ctx context.Context, id uint32) (*tasksrepo.Task, error) {
 	var task tasksrepo.Task
 	if err := t.tasks.QueryRowContext(ctx, "SELECT id, name, description FROM tasks where id=$1", id).Scan(&task.ID, &task.Name, &task.Description); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, tasksrepo.ErrNoTask
+		}
 		return nil, err
 	}
 	return &task, nil
 }
 
-func (t *TasksRepo) Close() error {
+func (t TasksRepo) CreateUser(ctx context.Context, user *tasksrepo.User) (*tasksrepo.User, error) {
+	var id uint64
+
+	if err := t.tasks.QueryRowContext(ctx, "INSERT INTO users (name, password) VALUES($1, $2) returning id", user.Name, user.Password).Scan(&id); err != nil {
+		return nil, err
+	}
+
+	user.ID = id
+	return user, nil
+}
+
+func (t TasksRepo) GetUserByName(ctx context.Context, name string) (*tasksrepo.User, error) {
+	var user tasksrepo.User
+
+	if err := t.tasks.QueryRowContext(ctx, "SELECT id, name, password FROM users WHERE name=$1", name).Scan(user.ID, user.Name, user.Password); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, tasksrepo.ErrNoUser
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (t TasksRepo) GetUserById(ctx context.Context, id uint64) (*tasksrepo.User, error) {
+	var user tasksrepo.User
+
+	if err := t.tasks.QueryRowContext(ctx, "SELECT id, name, password FROM users WHERE id=$1", id).Scan(user.ID, user.Name, user.Password); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, tasksrepo.ErrNoUser
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (t TasksRepo) Close() error {
 	if err := t.tasks.Close(); err != nil {
 		return fmt.Errorf("cant close tasksDB: %v", err)
 	}

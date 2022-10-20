@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	grader, err := app.NewGrader("postgres://postgres:password@localhost:5432/tasks")
+	grader, err := app.NewGrader("postgres://postgres:password@localhost:5432/tasks", "postgres://postgres:password@localhost:5432/queue")
 	if err != nil {
 		log.Fatalf("cant create Grader: %v", err)
 	}
