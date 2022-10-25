@@ -68,7 +68,7 @@ func (t TasksRepo) CreateUser(ctx context.Context, user *tasksrepo.User) (*tasks
 func (t TasksRepo) GetUserByName(ctx context.Context, name string) (*tasksrepo.User, error) {
 	var user tasksrepo.User
 
-	if err := t.tasks.QueryRowContext(ctx, "SELECT id, name, password FROM users WHERE name=$1", name).Scan(user.ID, user.Name, user.Password); err != nil {
+	if err := t.tasks.QueryRowContext(ctx, "SELECT id, name, password FROM users WHERE name=$1", name).Scan(&user.ID, &user.Name, &user.Password); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, tasksrepo.ErrNoUser
 		}
@@ -81,7 +81,7 @@ func (t TasksRepo) GetUserByName(ctx context.Context, name string) (*tasksrepo.U
 func (t TasksRepo) GetUserById(ctx context.Context, id uint64) (*tasksrepo.User, error) {
 	var user tasksrepo.User
 
-	if err := t.tasks.QueryRowContext(ctx, "SELECT id, name, password FROM users WHERE id=$1", id).Scan(user.ID, user.Name, user.Password); err != nil {
+	if err := t.tasks.QueryRowContext(ctx, "SELECT id, name, password FROM users WHERE id=$1", id).Scan(&user.ID, &user.Name, &user.Password); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, tasksrepo.ErrNoUser
 		}

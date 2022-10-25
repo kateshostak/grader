@@ -12,8 +12,6 @@ import (
 	tasksrepo "github.com/kateshostak/grader/internal/pkg/tasks"
 )
 
-type handlerWithUser func(w http.ResponseWriter, r *http.Request, user *tasksrepo.User)
-
 func Auth(auth auth.Auth, sessionManager session.Sessioner, tasksDB tasksrepo.Tasker, handler handlerWithUser) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithCancel(r.Context())
@@ -33,7 +31,7 @@ func Auth(auth auth.Auth, sessionManager session.Sessioner, tasksDB tasksrepo.Ta
 
 		claims, err := auth.ExtractClaims(authParts[1])
 		if err != nil {
-			http.Error(w, fmt.Sprintf("token is invalid or expired: %v", err), http.StatusUnauthorized)
+			http.Error(w, fmt.Sprintf("token is invalid or expired: %v\n%v", authParts[1], err), http.StatusUnauthorized)
 			return
 		}
 
@@ -50,6 +48,7 @@ func Auth(auth auth.Auth, sessionManager session.Sessioner, tasksDB tasksrepo.Ta
 
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+			return
 		}
 
 		handler(w, r, dbUser)

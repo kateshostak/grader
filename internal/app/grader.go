@@ -79,7 +79,7 @@ func createRedisDB(redisURL string) (*redis.Client, error) {
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("can's connect to redis: %v", err)
+		return nil, fmt.Errorf("can't connect to redis: %v", err)
 	}
 
 	return client, nil
@@ -97,10 +97,17 @@ func createGrader(tasks tasksrepo.Tasker, queue queuerepo.Queuer, auth auth.Auth
 
 	grader.router.HandleFunc("/tasks", grader.ListAllTasks).Methods("GET")
 	grader.router.HandleFunc("/task/{taskID}", grader.GetTaskByID).Methods("GET")
-	grader.router.HandleFunc("/task/{taskID}", middleware.Auth(grader.auth, grader.sessionManager, grader.tasks, grader.SubmitSolution)).Methods("POST")
+
+	grader.router.HandleFunc("/task/{taskID}",
+		middleware.Auth(
+			grader.auth,
+			grader.sessionManager,
+			grader.tasks,
+			grader.SubmitSolution),
+	).Methods("POST")
 
 	//grader.router.HandleFunc("/create", grader.CreateTask).Methods("GET")
-	grader.router.HandleFunc("/create", middleware.Auth(grader.auth, grader.sessionManager, grader.tasks, grader.CreateTask)).Methods("POST")
+	grader.router.HandleFunc("/create", middleware.Auth(grader.auth, grader.sessionManager, grader.tasks, middleware.Admin(grader.CreateTask))).Methods("POST")
 
 	//grader.router.HandleFunc("/login", grader.Login).Methods("GET")
 	grader.router.HandleFunc("/login", grader.Login).Methods("POST")
@@ -167,6 +174,9 @@ func (g Grader) CreateTask(w http.ResponseWriter, r *http.Request, user *tasksre
 		http.Error(w, fmt.Sprintf("cant create task:%v", err), http.StatusInternalServerError)
 		return
 	}
+
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(struct{ Message string }{Message: fmt.Sprintf("the task with name %v was created", task.Name)})
 	//redirect to list all tasks
 }
 

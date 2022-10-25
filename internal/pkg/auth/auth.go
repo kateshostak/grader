@@ -31,11 +31,10 @@ func NewAuth() Auth {
 }
 
 func (a Auth) GetSignedToken(user User, issuedAt time.Time, ttl time.Duration) (string, string, error) {
-	id := uuid.New().String()
 	claims := Claims{
 		User: user,
 		StandardClaims: jwt.StandardClaims{
-			Id:        id,
+			Id:        uuid.New().String(),
 			IssuedAt:  issuedAt.Unix(),
 			ExpiresAt: issuedAt.Add(ttl).Unix(),
 		},
@@ -46,7 +45,7 @@ func (a Auth) GetSignedToken(user User, issuedAt time.Time, ttl time.Duration) (
 	if err != nil {
 		return "", "", fmt.Errorf("Could not sign token %v", err)
 	}
-	return str, id, nil
+	return str, claims.StandardClaims.Id, nil
 }
 
 func (a Auth) ExtractClaims(tokenStr string) (Claims, error) {
