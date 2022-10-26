@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/kateshostak/grader/internal/pkg/auth"
 	"github.com/kateshostak/grader/internal/pkg/session"
@@ -17,21 +16,15 @@ func Auth(auth auth.Auth, sessionManager session.Sessioner, tasksDB tasksrepo.Ta
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 
-		authHeader := r.Header.Get("Authorization")
-		if len(authHeader) == 0 {
-			http.Error(w, "no token was provided in header", http.StatusInternalServerError)
-			return
-		}
-
-		authParts := strings.Split(authHeader, " ")
-		if len(authParts) < 2 {
-			http.Error(w, "auth header field is in invalid - either no method or token is provided", http.StatusUnauthorized)
-			return
-		}
-
-		claims, err := auth.ExtractClaims(authParts[1])
+		jwtStr, err := r.Cookie("grader")
 		if err != nil {
-			http.Error(w, fmt.Sprintf("token is invalid or expired: %v\n%v", authParts[1], err), http.StatusUnauthorized)
+			http.Error(w, err.Error(), http.StatusNotAcceptable)
+			return
+		}
+
+		claims, err := auth.ExtractClaims(jwtStr.Value)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("token is invalid or expired: %v", err), http.StatusUnauthorized)
 			return
 		}
 

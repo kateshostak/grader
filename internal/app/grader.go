@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"text/template"
 	"time"
 
 	"github.com/go-redis/redis/v9"
@@ -106,11 +107,9 @@ func createGrader(tasks tasksrepo.Tasker, queue queuerepo.Queuer, auth auth.Auth
 			grader.SubmitSolution),
 	).Methods("POST")
 
-	//grader.router.HandleFunc("/create", grader.CreateTask).Methods("GET")
-	grader.router.HandleFunc("/create", middleware.Auth(grader.auth, grader.sessionManager, grader.tasks, middleware.Admin(grader.CreateTask))).Methods("POST")
+	grader.router.HandleFunc("/create", middleware.Auth(grader.auth, grader.sessionManager, grader.tasks, middleware.Admin(grader.CreateTask)))
 
-	//grader.router.HandleFunc("/login", grader.Login).Methods("GET")
-	grader.router.HandleFunc("/login", grader.Login).Methods("POST")
+	grader.router.HandleFunc("/login", grader.Login)
 
 	//	grader.router.HandleFunc("/signup", grader.Signup).Methods("GET")
 	grader.router.HandleFunc("/signup", grader.Signup).Methods("POST")
@@ -152,31 +151,42 @@ func (g Grader) ListAllTasks(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	json.NewEncoder(w).Encode(res)
-}
-
-//authmiddleware + adminmiddleware
-func (g Grader) CreateTask(w http.ResponseWriter, r *http.Request, user *tasksrepo.User) {
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	defer cancel()
-
-	var task taskJSON
-
-	err := json.NewDecoder(r.Body).Decode(&task)
-	defer r.Body.Close()
-
+	tmpl, err := template.ParseFiles("../web/template/tasks.html")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("cant parse body %v", err), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := g.tasks.CreateTask(ctx, &tasksrepo.Task{ID: task.ID, Name: task.Name, Description: task.Description}); err != nil {
+	tmpl.Execute(w, res)
+}
+
+func (g Grader) CreateTask(w http.ResponseWriter, r *http.Request, user *tasksrepo.User) {
+	if r.Method == "GET" {
+		tmpl, err := template.ParseFiles("../web/template/create.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tmpl.Execute(w, nil)
+		return
+	}
+
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("cant parse form %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+
+	if err := g.tasks.CreateTask(ctx, &tasksrepo.Task{Name: r.FormValue("name"), Description: r.FormValue("description")}); err != nil {
 		http.Error(w, fmt.Sprintf("cant create task:%v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(200)
-	json.NewEncoder(w).Encode(struct{ Message string }{Message: fmt.Sprintf("the task with name %v was created", task.Name)})
+	json.NewEncoder(w).Encode(struct{ Message string }{Message: fmt.Sprintf("the task with name %v was created", r.FormValue("name"))})
 	//redirect to list all tasks
 }
 
@@ -242,27 +252,36 @@ func (g Grader) Signup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g Grader) Login(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	defer cancel()
-
-	var user userJSON
-
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		http.Error(w, "can't decode body", http.StatusInternalServerError)
+	if r.Method == "GET" {
+		tmpl, err := template.ParseFiles("../web/template/login.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tmpl.Execute(w, nil)
 		return
 	}
 
-	savedUser, err := g.tasks.GetUserByName(ctx, user.Name)
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+
+	savedUser, err := g.tasks.GetUserByName(ctx, r.FormValue("name"))
+
 	if err != nil {
 		if err == tasksrepo.ErrNoUser {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		}
-		http.Error(w, fmt.Sprintf("can't get user with name:%v, %v", user.Name, err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("can't get user with name:%v, %v", r.FormValue("name"), err), http.StatusInternalServerError)
 		return
 	}
 
-	if user.Password != savedUser.Password {
+	if r.FormValue("password") != savedUser.Password {
 		http.Error(w, "username or password is invalid", http.StatusBadRequest)
 		return
 	}
@@ -280,10 +299,7 @@ func (g Grader) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(struct{ Token string }{Token: jwt}); err != nil {
-		http.Error(w, fmt.Sprintf("can't write response for user with id: %v, %v", savedUser.ID, err), http.StatusInternalServerError)
-		return
-	}
+	http.SetCookie(w, &http.Cookie{Name: "grader", Value: jwt})
 }
 
 //auth middleware
