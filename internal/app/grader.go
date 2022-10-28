@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"text/template"
@@ -97,23 +95,32 @@ func createGrader(tasks tasksrepo.Tasker, queue queuerepo.Queuer, auth auth.Auth
 	}
 
 	grader.router.HandleFunc("/tasks", grader.ListAllTasks).Methods("GET")
-	grader.router.HandleFunc("/task/{taskID}", grader.GetTaskByID).Methods("GET")
 
 	grader.router.HandleFunc("/task/{taskID}",
 		middleware.Auth(
 			grader.auth,
 			grader.sessionManager,
 			grader.tasks,
-			grader.SubmitSolution),
-	).Methods("POST")
+			grader.ShowTask)).Methods("GET")
 
-	grader.router.HandleFunc("/create", middleware.Auth(grader.auth, grader.sessionManager, grader.tasks, middleware.Admin(grader.CreateTask)))
+	grader.router.HandleFunc("/task/{taskID}",
+		middleware.Auth(
+			grader.auth,
+			grader.sessionManager,
+			grader.tasks,
+			grader.SubmitSolution)).Methods("POST")
+
+	grader.router.HandleFunc("/create",
+		middleware.Auth(
+			grader.auth,
+			grader.sessionManager,
+			grader.tasks,
+			middleware.Admin(grader.CreateTask)))
 
 	grader.router.HandleFunc("/login", grader.Login)
+	grader.router.HandleFunc("/signup", grader.Signup)
 
-	//	grader.router.HandleFunc("/signup", grader.Signup).Methods("GET")
-	grader.router.HandleFunc("/signup", grader.Signup).Methods("POST")
-
+	grader.router.HandleFunc("/", grader.HomePage)
 	return grader
 }
 
@@ -146,8 +153,9 @@ func (g Grader) ListAllTasks(w http.ResponseWriter, r *http.Request) {
 	res := []taskJSON{}
 	for _, task := range tasksSlice {
 		res = append(res, taskJSON{
-			ID:   task.ID,
-			Name: task.Name,
+			ID:          task.ID,
+			Name:        task.Name,
+			Description: task.Description,
 		})
 	}
 
@@ -185,12 +193,10 @@ func (g Grader) CreateTask(w http.ResponseWriter, r *http.Request, user *tasksre
 		return
 	}
 
-	w.WriteHeader(200)
-	json.NewEncoder(w).Encode(struct{ Message string }{Message: fmt.Sprintf("the task with name %v was created", r.FormValue("name"))})
-	//redirect to list all tasks
+	http.Redirect(w, r, "/tasks", 302)
 }
 
-func (g Grader) GetTaskByID(w http.ResponseWriter, r *http.Request) {
+func (g Grader) ShowTask(w http.ResponseWriter, r *http.Request, user *tasksrepo.User) {
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
@@ -210,23 +216,36 @@ func (g Grader) GetTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(taskJSON{ID: task.ID, Name: task.Name, Description: task.Description})
+	tmpl, err := template.ParseFiles("../web/template/solution.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl.Execute(w, task)
 }
 
 func (g Grader) Signup(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	defer cancel()
+	if r.Method == "GET" {
 
-	var user userJSON
+		tmpl, err := template.ParseFiles("../web/template/signup.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tmpl.Execute(w, nil)
+		return
+	}
 
-	defer r.Body.Close()
-
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+	if err := r.ParseForm(); err != nil {
 		http.Error(w, fmt.Sprintf("cant parse body %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	savedUser, err := g.tasks.CreateUser(ctx, &tasksrepo.User{Name: user.Name, Password: user.Password})
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+
+	savedUser, err := g.tasks.CreateUser(ctx, &tasksrepo.User{Name: r.FormValue("name"), Password: r.FormValue("password")})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("cant create user:%v", err), http.StatusInternalServerError)
 		return
@@ -245,14 +264,24 @@ func (g Grader) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(struct{ Token string }{Token: jwt}); err != nil {
-		http.Error(w, fmt.Sprintf("can't write response for user with id: %v, %v", savedUser.ID, err), http.StatusInternalServerError)
+	http.SetCookie(w, &http.Cookie{Name: "grader", Value: jwt})
+	http.Redirect(w, r, "/tasks", 302)
+
+}
+
+func (g Grader) HomePage(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("../web/template/index.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	tmpl.Execute(w, nil)
 }
 
 func (g Grader) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
+		//should check for cookie and expiration if ok - redirect to tasks
 		tmpl, err := template.ParseFiles("../web/template/login.html")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -300,9 +329,9 @@ func (g Grader) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{Name: "grader", Value: jwt})
+	http.Redirect(w, r, "/tasks", 302)
 }
 
-//auth middleware
 func (g Grader) SubmitSolution(w http.ResponseWriter, r *http.Request, user *tasksrepo.User) {
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
@@ -313,22 +342,31 @@ func (g Grader) SubmitSolution(w http.ResponseWriter, r *http.Request, user *tas
 		return
 	}
 
-	solution, err := io.ReadAll(r.Body)
-	defer r.Body.Close()
+	if _, err := g.tasks.GetTaskByID(ctx, uint32(taskID)); err != nil {
+		if err == tasksrepo.ErrNoTask {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
 
-	if err != nil {
-		http.Error(w, fmt.Sprintf("can't read body, taskID:%v, userID:%v, err %v", taskID, user.ID, err), http.StatusInternalServerError)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, fmt.Sprintf("can't parse form, taskID:%v, userID:%v, err %v", taskID, user.ID, err), http.StatusInternalServerError)
 		return
 	}
 
 	if err := g.queue.Add(ctx, queuerepo.Solution{
-		TaskID:   uint32(taskID),
-		UserID:   user.ID,
-		Solution: solution,
-		Status:   "New",
+		TaskID:    uint32(taskID),
+		UserID:    user.ID,
+		CreatedAt: time.Now(),
+		Solution:  []byte(r.FormValue("solution")),
+		Status:    "New",
 	}); err != nil {
 		http.Error(w, fmt.Sprintf("can't submit solution for userID %v, taskID %v, err %v", user.ID, taskID, err), http.StatusInternalServerError)
 		return
 	}
 
+	//add message to queue
+	fmt.Println("success")
 }

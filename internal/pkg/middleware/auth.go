@@ -13,20 +13,20 @@ import (
 
 func Auth(auth auth.Auth, sessionManager session.Sessioner, tasksDB tasksrepo.Tasker, handler handlerWithUser) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithCancel(r.Context())
-		defer cancel()
-
 		jwtStr, err := r.Cookie("grader")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotAcceptable)
+			http.Redirect(w, r, "/login", 302)
 			return
 		}
 
 		claims, err := auth.ExtractClaims(jwtStr.Value)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("token is invalid or expired: %v", err), http.StatusUnauthorized)
+			http.Redirect(w, r, "/login", 302)
 			return
 		}
+
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
 
 		if !sessionManager.IsValid(ctx, strconv.FormatUint(claims.User.ID, 10), claims.StandardClaims.Id) {
 			http.Error(w, "session is invalid", http.StatusUnauthorized)
@@ -44,6 +44,7 @@ func Auth(auth auth.Auth, sessionManager session.Sessioner, tasksDB tasksrepo.Ta
 			return
 		}
 
+		fmt.Println()
 		handler(w, r, dbUser)
 	})
 }

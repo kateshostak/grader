@@ -14,7 +14,7 @@
     	</tr>
 			{{ range . }}
       			<tr>
-              		<td>{{ .Name }}</td>
+                    <td><a href="task/{{.ID}}">{{ .Name }}</a></td>
                     <td>{{ .Description}}</td>
       			</tr>
 			{{ end }}

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+    <head>
+    <title></title>
+    </head>
+    <body>
+<table>
+      	<tr>
+          <td>Name</td>
+          <td>Description</td>
+    	</tr>
+      			<tr>
+                    <td>{{ .Name }}</td>
+                    <td>{{ .Description}}</td>
+      			</tr>
+    </table>
+
+        <form action="/task/{{.ID}}" method="post">
+            Solution:<input type="text" name="solution">
+            <input type="submit" value="Submit">
+        </form>
+    </body>
+</html>
